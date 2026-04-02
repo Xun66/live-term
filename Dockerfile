@@ -4,12 +4,9 @@ FROM node:18-alpine
 # Set working directory
 WORKDIR /app
 
-# Copy package.json
-COPY package.json ./
-
-# Install server dependencies (ws only)
-# Use npm install to reduce dependency on pnpm, or install required libs directly
-RUN npm install ws --silent
+# Initialize a clean package and install only the relay server dependency
+# This avoids issues with node-pty which requires build tools not present in alpine
+RUN npm init -y && npm install ws --silent
 
 # Copy server code
 COPY server/ ./server/
