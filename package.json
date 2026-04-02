@@ -1,6 +1,6 @@
 {
   "name": "@xun66/live-term",
-  "version": "1.0.4",
+  "version": "0.1.0",
   "description": "Terminal bidirectional E2EE remote sync tool",
   "repository": {
     "type": "git",
