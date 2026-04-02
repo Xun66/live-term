@@ -105,13 +105,14 @@ async function main() {
         // ==========================
         //        Target Mode
         // ==========================
-        const uuid = crypto.randomUUID();
+        const uuid = args['id'] || crypto.randomUUID().slice(0, 6);
         const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
         const pubKeyStr = publicKey.export({ type: 'spki', format: 'pem' });
         const nonceT = crypto.randomBytes(16).toString('hex');
 
-        console.log(`\x1b[32m[Target Mode]\x1b[0m UUID: \x1b[1m${uuid}\x1b[0m`);
-        console.log(`Waiting for controller to initiate handshake...`);
+        console.log(`\x1b[32m[Target Mode]\x1b[0m Session ID: \x1b[1;36m${uuid}\x1b[0m`);
+        console.log(`\x1b[90mRelay Server: ${SERVER_URL}\x1b[0m`);
+        console.log(`Waiting for controller to connect...`);
 
         const ws = new WebSocket(`${SERVER_URL}?id=${uuid}&role=target`, wsOptions);
         let aesKey = null;
@@ -192,7 +193,8 @@ async function main() {
         });
 
         function startPty() {
-            const shell = args['shell'] || (process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/zsh'));
+            // Priority: --shell arg > process.env.SHELL > /bin/zsh > /bin/sh > sh
+            let shell = args['shell'] || process.env.SHELL || (process.platform === 'win32' ? 'powershell.exe' : '/bin/zsh');
             const hotkey = args['hotkey'] || '\x18';
 
             const cols = parseInt(process.stdout.columns) || 80;
@@ -201,16 +203,30 @@ async function main() {
 
             process.stdin.removeAllListeners('data');
 
-            try {
-                ptyProcess = spawn(shell, [], {
-                    name: 'xterm-256color',
-                    cols,
-                    rows,
-                    cwd,
-                    env: process.env
-                });
-            } catch (err) {
-                console.error(`\x1b[31m[Error]\x1b[0m Failed to spawn shell (${shell}):`, err.message);
+            function trySpawn(exe) {
+                try {
+                    return spawn(exe, [], {
+                        name: 'xterm-256color',
+                        cols,
+                        rows,
+                        cwd,
+                        env: process.env
+                    });
+                } catch (e) {
+                    return null;
+                }
+            }
+
+            ptyProcess = trySpawn(shell);
+
+            // Fallback if initial shell fails (common on some macOS/Unix setups with strict paths)
+            if (!ptyProcess && shell !== '/bin/sh') {
+                ptyProcess = trySpawn('/bin/sh') || trySpawn('sh');
+            }
+
+            if (!ptyProcess) {
+                console.error(`\x1b[31m[Error]\x1b[0m Failed to spawn shell (${shell}).`);
+                console.error(`Try specifying a shell manually with --shell=/path/to/shell`);
                 process.exit(1);
             }
 
