@@ -1,6 +1,6 @@
-# live-terminal
+# live-term
 
-**live-terminal** is a terminal bidirectional End-to-End Encrypted (E2EE) remote sync tool. It allows two terminal instances (a "target" and a "controller") to securely communicate through a relay server.
+**live-term** is a terminal bidirectional End-to-End Encrypted (E2EE) remote sync tool. It allows two terminal instances (a "target" and a "controller") to securely communicate through a relay server.
 
 ## Features
 
@@ -36,8 +36,8 @@ node server/index.js --port 8899
 
 **Docker:**
 ```bash
-docker build -t live-terminal-relay .
-docker run -p 8899:8899 live-terminal-relay
+docker build -t live-term-relay .
+docker run -p 8899:8899 live-term-relay
 ```
 
 ### 3. Connect as Target
@@ -56,7 +56,7 @@ node client/main.js --mode=controller --id=YOUR_SESSION_ID
 
 ## Security
 
-live-terminal enforces secure connections by default. If you need to use an insecure `ws://` connection (e.g., for local testing), you must pass the `--allow-insecure` flag.
+live-term enforces secure connections by default. If you need to use an insecure `ws://` connection (e.g., for local testing), you must pass the `--allow-insecure` flag.
 
 ## License
 

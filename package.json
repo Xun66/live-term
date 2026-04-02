@@ -4,7 +4,7 @@
   "description": "Terminal bidirectional E2EE remote sync tool",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Xun66/live-terminal.git"
+    "url": "git+https://github.com/Xun66/live-term.git"
   },
   "main": "server/index.js",
   "bin": {
