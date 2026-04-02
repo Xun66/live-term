@@ -1,20 +1,23 @@
-# Use lightweight Node image
-FROM node:18-alpine
+# Stage 1: Build/Install
+FROM node:20-alpine AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Initialize a clean package and install only the relay server dependency
-# This avoids issues with node-pty which requires build tools not present in alpine
-RUN npm init -y && npm install ws --silent
+# Install only the production dependency
+RUN npm init -y && npm install ws --production --silent
 
-# Copy server code
+# Stage 2: Runtime
+# We use alpine again but copy only what's needed to keep it tiny
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy node_modules and server code from builder
+COPY --from=builder /app/node_modules ./node_modules
 COPY server/ ./server/
 
 # Expose relay port
 EXPOSE 8080
-
-# Set default port environment variable
 ENV PORT=8080
 
 # Start relay server
