@@ -1,24 +1,23 @@
 {
   "name": "@xun66/live-term",
-  "version": "1.1.8",
-  "description": "Secure E2EE Terminal Collaboration Tool",
+  "version": "1.0.0",
+  "description": "Terminal bidirectional E2EE remote sync tool",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Xun66/live-term.git"
+    "url": "git+https://github.com/xun66/live-term.git"
   },
-  "main": "relay/index.js",
+  "main": "server/index.js",
   "bin": {
     "live-term": "client/main.js",
-    "live-term-relay": "relay/index.js"
+    "live-term-server": "server/index.js"
   },
   "files": [
     "client/",
-    "relay/",
+    "server/",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "postinstall": "if [ \"$(uname)\" = \"Darwin\" ]; then find node_modules -name spawn-helper -exec chmod +x {} +; fi",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

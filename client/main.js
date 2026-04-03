@@ -1,40 +1,25 @@
 #!/usr/bin/env node
-
-const WebSocket = require('ws');
 const { spawn } = require('node-pty');
 const crypto = require('crypto');
+const WebSocket = require('ws');
 const readline = require('readline');
 
+/**
+ * TermChat Client - Terminal bidirectional E2EE remote sync tool
+ * Logic: Research -> Strategy -> Execution (Strict Plan Implementation)
+ */
+
 // --- Configuration ---
+const SERVER_URL = process.env.TERMINAL_SERVER_URL || 'ws://127.0.0.1:8899/chat';
+
 const args = process.argv.slice(2).reduce((acc, arg) => {
     const [k, v] = arg.split('=');
     acc[k.replace('--', '')] = v === undefined ? true : v;
     return acc;
 }, {});
 
-const mode = args['mode'] || 'target'; 
-const RELAY_URL = args['relay'] || process.env.TERMINAL_RELAY_URL || 'ws://127.0.0.1:8899/live-term/';
-
-// Hotkey Parser: Supports "ctrl+x", "^x", or raw hex like "\x18"
-function parseHotkey(val) {
-    if (!val) return '\x18'; // Default Ctrl+X
-    const lower = val.toLowerCase();
-    if (lower.startsWith('ctrl+') || lower.startsWith('^')) {
-        const char = lower.replace('ctrl+', '').replace('^', '');
-        if (char.length === 1) {
-            const code = char.charCodeAt(0) - 96;
-            if (code >= 1 && code <= 26) return String.fromCharCode(code);
-        }
-    }
-    if (val.startsWith('\\x')) return String.fromCharCode(parseInt(val.slice(2), 16));
-    return val[0]; 
-}
-
-const HOTKEY = parseHotkey(args['hotkey']);
-const HOTKEY_DISPLAY = args['hotkey'] || 'Ctrl+X';
-
 // Security Check: Enforce --allow-insecure for ws://
-if (RELAY_URL.startsWith('ws://') && !args['allow-insecure']) {
+if (SERVER_URL.startsWith('ws://') && !args['allow-insecure']) {
     console.error('\x1b[31m[Security Error]\x1b[0m Standard "ws://" is insecure. Use "wss://" or pass --allow-insecure to proceed.');
     process.exit(1);
 }
@@ -43,8 +28,42 @@ if (RELAY_URL.startsWith('ws://') && !args['allow-insecure']) {
 
 function generateSAS(transcript) {
     const hash = crypto.createHash('sha256').update(transcript).digest('hex');
+    // Use BigInt conversion to ensure determinism of the 6-digit number
     return (BigInt('0x' + hash) % 1000000n).toString().padStart(6, '0');
 }
+
+function encrypt(data, key) {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const enc = Buffer.concat([cipher.update(data), cipher.final()]);
+    return { payload: enc.toString('base64'), iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64') };
+}
+
+function decrypt(msg, key) {
+    try {
+        const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(msg.iv, 'base64'));
+        decipher.setAuthTag(Buffer.from(msg.tag, 'base64'));
+        return Buffer.concat([decipher.update(Buffer.from(msg.payload, 'base64')), decipher.final()]);
+    } catch (e) {
+        console.error('\x1b[31m[Decryption Failed]\x1b[0m Integrity check failed or wrong key.');
+        process.exit(1);
+    }
+}
+
+// --- Constants & UI Helpers ---
+const UI = {
+    RESET: '\x1b[0m',
+    BANNER_TARGET: '\x1b[41;97m SESSION ACTIVE \x1b[0m',
+    BANNER_CTRL: '\x1b[44;97m SESSION ACTIVE \x1b[0m'
+};
+
+function resetTerminal() {
+    if (process.stdout.isTTY) {
+        process.stdout.write(UI.RESET);
+    }
+}
+
+// --- Encryption Helpers (Wrapped for E2EE) ---
 
 function encryptEnvelope(type, data, key) {
     const json = JSON.stringify({ type, data: Buffer.from(data).toString('base64') });
@@ -72,36 +91,28 @@ function decryptEnvelope(msg, key) {
     }
 }
 
-const UI = {
-    RESET: '\x1b[0m',
-    BANNER_TARGET: '\x1b[41;97m SESSION ACTIVE \x1b[0m',
-    BANNER_CTRL: '\x1b[44;97m SESSION ACTIVE \x1b[0m'
-};
-
-function resetTerminal() {
-    if (process.stdout.isTTY) process.stdout.write(UI.RESET);
-}
-
 // --- Main Program ---
 
 async function main() {
+    const mode = args['mode'] || 'target';
     const isController = mode === 'controller';
+    
+    // TLS options
     const wsOptions = args['allow-insecure'] ? { rejectUnauthorized: false } : {};
 
     if (!isController) {
         // ==========================
         //        Target Mode
         // ==========================
-        const uuid = args['id'] || crypto.randomUUID();
+        const uuid = crypto.randomUUID();
         const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
         const pubKeyStr = publicKey.export({ type: 'spki', format: 'pem' });
         const nonceT = crypto.randomBytes(16).toString('hex');
 
-        console.log(`\x1b[32m[Target Mode]\x1b[0m Session ID: \x1b[1;36m${uuid}\x1b[0m`);
-        console.log(`\x1b[90mRelay: ${RELAY_URL}\x1b[0m`);
-        console.log(`Waiting for controller to connect...`);
+        console.log(`\x1b[32m[Target Mode]\x1b[0m UUID: \x1b[1m${uuid}\x1b[0m`);
+        console.log(`Waiting for controller to initiate handshake...`);
 
-        const ws = new WebSocket(`${RELAY_URL}?id=${uuid}&role=target`, wsOptions);
+        const ws = new WebSocket(`${SERVER_URL}?id=${uuid}&role=target`, wsOptions);
         let aesKey = null;
         let ptyProcess = null;
         let isApproved = false;
@@ -117,41 +128,51 @@ async function main() {
 
         ws.on('message', async (data) => {
             let msg = JSON.parse(data);
-            if (msg.type === 'secure' && aesKey) msg = decryptEnvelope(msg, aesKey);
+
+            // If it's a secure message, decrypt it first
+            if (msg.type === 'secure' && aesKey) {
+                msg = decryptEnvelope(msg, aesKey);
+                // After decryption, it will have the real type: input, resize, etc.
+            }
 
             if (msg.type === 'handshake_init') {
+                // Send proposal immediately so controller can also show SAS
                 ws.send(JSON.stringify({ type: 'handshake_proposal', pub: pubKeyStr, nonce: nonceT }));
+                
                 const transcript = msg.pub + pubKeyStr + msg.nonce + nonceT;
                 const sas = generateSAS(transcript);
 
                 process.stdout.write(`\n\x1b[33m[!] Incoming connection. Verification Code: \x1b[1;36m${sas}\x1b[0m\n`);
                 
                 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-                let answer = '';
-                while (true) {
-                    answer = await new Promise(resolve => rl.question('Approve this controller? [y/N]: ', resolve));
-                    answer = answer.trim().toLowerCase();
-                    if (answer === 'y' || answer === 'n' || answer === '') break;
-                    process.stdout.write('Please enter "y" for yes or "n" for no.\n');
-                }
+                const answer = await new Promise(resolve => rl.question('Approve this controller? [y/n]: ', resolve));
                 rl.close();
                 process.stdin.resume();
 
-                if (answer === 'y') {
+                if (answer.toLowerCase() === 'y') {
                     isApproved = true;
                     ws.send(JSON.stringify({ type: 'handshake_res', approved: true }));
                 } else {
-                    console.log('\x1b[31m[!] Rejected.\x1b[0m');
+                    console.log('Rejected.');
                     ws.close();
-                    process.exit(0);
                 }
             } else if (msg.type === 'auth' && isApproved) {
                 aesKey = crypto.privateDecrypt(privateKey, Buffer.from(msg.key, 'base64'));
                 console.log(`\x1b[32m[OK] Encrypted Session Established.\x1b[0m`);
-                console.log(`${UI.BANNER_TARGET} Press \x1b[1m${HOTKEY_DISPLAY}\x1b[0m to exit.`);
+                
+                const hotkey = args['hotkey'] || '\x18'; 
+                const hotkeyName = hotkey === '\x18' ? 'Ctrl+X' : `ASCII(${hotkey.charCodeAt(0)})`;
+                
+                console.log(`${UI.BANNER_TARGET} Press \x1b[1m${hotkeyName}\x1b[0m to exit.`);
+                
                 startPty();
             } else if (msg.type === 'input' && aesKey && ptyProcess) {
-                ptyProcess.write(msg.data.toString());
+                const input = msg.data.toString();
+                if (input === '/quit\r') {
+                    cleanup('Remote terminated via /quit.');
+                    process.exit(0);
+                }
+                ptyProcess.write(input);
             } else if (msg.type === 'resize' && aesKey && ptyProcess) {
                 const { cols, rows } = JSON.parse(msg.data.toString());
                 ptyProcess.resize(cols, rows);
@@ -162,33 +183,36 @@ async function main() {
         });
 
         function startPty() {
-            process.stdin.removeAllListeners('data');
             const shell = args['shell'] || (process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/zsh'));
+            const hotkey = args['hotkey'] || '\x18';
+
             const cols = parseInt(process.stdout.columns) || 80;
             const rows = parseInt(process.stdout.rows) || 24;
-            
+            const cwd = process.env.HOME || process.cwd();
+
+            process.stdin.removeAllListeners('data');
+
             try {
                 ptyProcess = spawn(shell, [], {
                     name: 'xterm-256color',
                     cols,
                     rows,
-                    cwd: process.env.HOME || process.cwd(),
+                    cwd,
                     env: process.env
                 });
             } catch (err) {
                 console.error(`\x1b[31m[Error]\x1b[0m Failed to spawn shell (${shell}):`, err.message);
-                if (err.message.includes('posix_spawnp') && process.platform === 'darwin') {
-                    console.error('\n\x1b[33m[Hint]\x1b[0m This error often occurs on macOS when node-pty spawn-helper lacks execute permissions.');
-                    console.error('Try running: \x1b[1mchmod +x node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper\x1b[0m');
-                }
                 process.exit(1);
             }
 
-            if (process.stdin.isTTY) process.stdin.setRawMode(true);
+            if (process.stdin.isTTY) {
+                process.stdin.setRawMode(true);
+            }
             process.stdin.on('data', d => {
-                if (d.toString() === HOTKEY) {
+                const str = d.toString();
+                if (str === hotkey) {
                     ws.send(JSON.stringify(encryptEnvelope('close', Buffer.alloc(0), aesKey)));
-                    cleanup('You exited.');
+                    cleanup('You exited the session.');
                     process.exit(0);
                 }
                 if (!args['no-local-input']) ptyProcess.write(d);
@@ -196,22 +220,28 @@ async function main() {
 
             ptyProcess.onData(data => {
                 process.stdout.write(data);
-                if (aesKey && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(encryptEnvelope('output', data, aesKey)));
+                
+                if (aesKey && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify(encryptEnvelope('output', data, aesKey)));
+                }
             });
 
             ptyProcess.onExit(() => {
-                if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(encryptEnvelope('close', Buffer.alloc(0), aesKey)));
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify(encryptEnvelope('close', Buffer.alloc(0), aesKey)));
+                }
                 cleanup('Local shell exited.');
                 process.exit(0);
             });
         }
+
     } else {
         // ==========================
         //        Controller Mode
         // ==========================
-        const targetId = args['target-id'];
-        if (!targetId) {
-            console.error('Usage: live-term --mode=controller --target-id=ID');
+        const targetUuid = args['target-uuid'];
+        if (!targetUuid) {
+            console.error('Usage: node main.js --mode=controller --target-uuid=UUID [--allow-insecure]');
             process.exit(1);
         }
 
@@ -220,8 +250,14 @@ async function main() {
         const nonceC = crypto.randomBytes(16).toString('hex');
         const sessionKey = crypto.randomBytes(32);
 
-        console.log(`\x1b[34m[Controller Mode]\x1b[0m Connecting to target: \x1b[1;36m${targetId}\x1b[0m...`);
-        const ws = new WebSocket(`${RELAY_URL}?id=${targetId}&role=controller`, wsOptions);
+        console.log(`\x1b[34m[Controller Mode]\x1b[0m Connecting to ${targetUuid}...`);
+        const ws = new WebSocket(`${SERVER_URL}?id=${targetUuid}&role=controller`, wsOptions);
+
+        let commandBuffer = '';
+
+        ws.on('open', () => {
+            console.log(`\x1b[90mConnected to relay, waiting for target...\x1b[0m`);
+        });
 
         const cleanup = (reason = 'Disconnected.') => {
             console.log(`\n\x1b[33m[!] ${reason}\x1b[0m`);
@@ -233,52 +269,69 @@ async function main() {
 
         ws.on('message', (data) => {
             let msg = JSON.parse(data);
-            if (msg.type === 'secure') msg = decryptEnvelope(msg, sessionKey);
 
-            if (msg.type === 'error') {
-                cleanup(`Relay Error: ${msg.message}`);
-                process.exit(1);
+            if (msg.type === 'secure') {
+                msg = decryptEnvelope(msg, sessionKey);
             }
 
             if (msg.type === 'session_sync' && msg.peer === 'target' && msg.status === 'ready') {
-                console.log(`\x1b[32m[OK] Target is online. Handshaking...\x1b[0m`);
+                console.log(`\x1b[32m[OK] Target is online. Initiating handshake...\x1b[0m`);
                 ws.send(JSON.stringify({ type: 'handshake_init', pub: pubKeyStr, nonce: nonceC }));
             } else if (msg.type === 'handshake_proposal') {
-                const sas = generateSAS(pubKeyStr + msg.pub + nonceC + msg.nonce);
-                console.log(`\x1b[33m[!] Verification Code: \x1b[1;36m${sas}\x1b[0m (Waiting for approval)`);
+                const transcript = pubKeyStr + msg.pub + nonceC + msg.nonce;
+                const sas = generateSAS(transcript);
+                console.log(`\x1b[33m[!] Handshake Initiated. Verification Code: \x1b[1;36m${sas}\x1b[0m`);
+                console.log(`Waiting for target to approve...`);
                 ws.targetPub = msg.pub;
             } else if (msg.type === 'handshake_res' && msg.approved) {
-                console.log(`\x1b[32m[OK] Approved.\x1b[0m`);
-                ws.send(JSON.stringify({ type: 'auth', key: crypto.publicEncrypt(ws.targetPub, sessionKey).toString('base64') }));
-                console.log(`${UI.BANNER_CTRL} Press \x1b[1m${HOTKEY_DISPLAY}\x1b[0m to exit.`);
+                console.log(`\x1b[32m[OK] Connection Approved by Target.\x1b[0m`);
+
+                const encKey = crypto.publicEncrypt(ws.targetPub, sessionKey);
+                ws.send(JSON.stringify({ type: 'auth', key: encKey.toString('base64') }));
+
+                const hotkey = args['hotkey'] || '\x18'; 
+                const hotkeyName = hotkey === '\x18' ? 'Ctrl+X' : `ASCII(${hotkey.charCodeAt(0)})`;
+                console.log(`${UI.BANNER_CTRL} Press \x1b[1m${hotkeyName}\x1b[0m to exit.`);
 
                 if (!args['read-only']) {
                     if (process.stdin.isTTY) process.stdin.setRawMode(true);
                     process.stdin.on('data', d => {
-                        if (d.toString() === HOTKEY) {
+                        const str = d.toString();
+                        if (str === hotkey) {
                             ws.send(JSON.stringify(encryptEnvelope('close', Buffer.alloc(0), sessionKey)));
-                            cleanup('You exited.');
+                            cleanup('You exited the session.');
                             process.exit(0);
                         }
+                        
+                        commandBuffer += str;
+                        if (commandBuffer.includes('/quit\r')) {
+                             ws.send(JSON.stringify(encryptEnvelope('input', Buffer.from('/quit\r'), sessionKey)));
+                             setTimeout(() => { cleanup('Sent /quit to target.'); process.exit(0); }, 100);
+                             return;
+                        }
+                        if (commandBuffer.length > 20) commandBuffer = commandBuffer.slice(-10);
+
                         ws.send(JSON.stringify(encryptEnvelope('input', d, sessionKey)));
                     });
+                } else {
+                    console.log(`\x1b[90m(Read-only mode active)\x1b[0m`);
                 }
-                const sendResize = () => {
-                    const data = JSON.stringify({ cols: process.stdout.columns, rows: process.stdout.rows });
-                    ws.send(JSON.stringify(encryptEnvelope('resize', data, sessionKey)));
-                };
-                sendResize();
-                process.stdout.on('resize', sendResize);
+                
+                process.stdout.on('resize', () => {
+                    ws.send(JSON.stringify(encryptEnvelope('resize', Buffer.from(JSON.stringify({ cols: process.stdout.columns, rows: process.stdout.rows })), sessionKey)));
+                });
             } else if (msg.type === 'output') {
                 process.stdout.write(msg.data);
             } else if (msg.type === 'close') {
-                cleanup('Closed by peer.');
+                cleanup('Session closed by peer.');
                 process.exit(0);
             }
         });
 
-        ws.on('close', () => cleanup('Relay connection closed.'));
-        ws.on('error', (e) => cleanup(`Connection error: ${e.message}`));
+        ws.on('close', () => {
+            cleanup('Connection lost.');
+            process.exit(0);
+        });
     }
 }
 
