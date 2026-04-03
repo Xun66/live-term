@@ -1,6 +1,10 @@
 # live-term
 
+[中文](./README_CN.md)
+
 **live-term** is a secure, End-to-End Encrypted (E2EE) terminal collaboration tool. It allows you to share your terminal session with a remote collaborator through a relay.
+
+![Demo Video](./demo.mp4)
 
 ## Quick Start
 
