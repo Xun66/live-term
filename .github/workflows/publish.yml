@@ -1,8 +1,9 @@
-name: Publish Package to NPM
+name: publish.yml
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*'
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -10,6 +11,7 @@ env:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: read
       id-token: write
@@ -22,7 +24,9 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          npm install -g npm@latest
+          npm install
 
       - name: Publish to NPM
         run: npm publish --access public --provenance

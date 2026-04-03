@@ -13,16 +13,17 @@ function getArg(name, short) {
 
 const port = parseInt(getArg('--port', '-p') || process.env.PORT || '8899', 10);
 const host = getArg('--host', '-h') || process.env.HOST || '0.0.0.0';
+const wsPath = getArg('--path', '-pt') || process.env.WS_PATH || process.env.API_BASE || '/live-term/';
 
 const sessions = new Map();
 const wss = new WebSocketServer({ 
   port: port, 
   host: host,
-  path: '/chat' 
+  path: wsPath 
 });
 
 wss.on('listening', () => {
-    console.log(`[Relay Server] Listening on ${host}:${port}/chat`);
+    console.log(`[Relay Server] Listening on ${host}:${port}${wsPath}`);
 });
 
 wss.on('connection', (ws, req) => {

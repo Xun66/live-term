@@ -1,63 +1,77 @@
 # live-term
 
-**live-term** is a terminal bidirectional End-to-End Encrypted (E2EE) remote sync tool. It allows two terminal instances (a "target" and a "controller") to securely communicate through a relay server.
+**live-term** is a secure, End-to-End Encrypted (E2EE) terminal synchronization tool. It allows you to share your terminal session with a remote controller through a relay server.
 
-## Features
-
-- **E2EE Security**: All terminal data is encrypted using AES-256-GCM before leaving the client.
-- **Bidirectional Sync**: Real-time synchronization of terminal input and output.
-- **Relay Server**: Simple Node.js relay server for session handling.
-- **Docker Support**: Easy deployment of the relay server using Docker.
-
-## Project Note
-
-This project was developed with significant assistance from **AI (Gemini CLI)**. The AI assisted in architecting the E2EE envelope, implementing the relay logic, and refining the Docker configuration.
-
-## Getting Started
+## Quick Start
 
 ### 1. Install via NPM
 
 ```bash
-# Install globally
 npm install -g @xun66/live-term
-
-# Run the client
-live-term --mode=target --id=YOUR_SESSION_ID
 ```
 
-### 2. Start the Relay Server
+---
 
-You can run the relay server locally or using Docker.
+### 🌍 Case 1: Using the Free Relay Server (Easiest)
 
-**Locally:**
+We provide a free public relay server at `xebox.org`.
+
+**Target (The machine you want to control):**
 ```bash
-node server/index.js --port 8899
+TERMINAL_SERVER_URL=wss://xebox.org/live-term/ live-term
 ```
+*It will print a `Session ID` (UUID). Share this with the controller.*
 
-**Docker:**
+**Controller (The machine you are controlling from):**
 ```bash
-docker build -t live-term-relay .
-docker run -p 8899:8899 live-term-relay
+TERMINAL_SERVER_URL=wss://xebox.org/live-term/ live-term --mode=controller --target-id=YOUR_ID
 ```
 
-### 3. Connect as Target
+---
 
-On the machine you want to control:
+### 🏠 Case 2: Using your own Local/Private Server
+
+**Target:**
 ```bash
-node client/main.js --mode=target --id=YOUR_SESSION_ID
+TERMINAL_SERVER_URL=ws://localhost:8899/live-term/ live-term --allow-insecure
 ```
 
-### 4. Connect as Controller
-
-On the machine you are controlling from:
+**Controller:**
 ```bash
-node client/main.js --mode=controller --id=YOUR_SESSION_ID
+TERMINAL_SERVER_URL=ws://localhost:8899/live-term/ live-term --mode=controller --target-id=YOUR_ID --allow-insecure
 ```
+
+---
+
+## CLI Options
+
+| Argument | Description | Default |
+| :--- | :--- | :--- |
+| `--mode` | Run mode: `target` or `controller`. | `target` |
+| `--target-id`| (Controller only) The Session ID of the target. | **Required** |
+| `--id` | (Target only) Custom Session ID (Vanity ID). | (Random 6 chars) |
+| `--server` | Full URL of the relay server. | `ws://127.0.0.1:8899/live-term/` |
+| `--allow-insecure` | Allow `ws://` or self-signed certificates. | `false` |
+| `--hotkey` | Key to exit session (e.g., `ctrl+b`, `^x`). | `ctrl+x` |
+
+> **Note:** You can use the `TERMINAL_SERVER_URL` environment variable (as shown in the examples) or the `--server` flag to specify the relay.
 
 ## Security
 
-live-term enforces secure connections by default. If you need to use an insecure `ws://` connection (e.g., for local testing), you must pass the `--allow-insecure` flag.
+- **E2EE**: All data is encrypted with AES-256-GCM. Keys are exchanged via RSA and never touch the server.
+- **Verification Code (SAS)**: A **6-digit numeric code** is shown on both ends. **Verify this matches** to ensure no Man-in-the-Middle is present.
+- **Explicit Approval**: The target must manually approve any incoming connection.
+
+## Self-Hosting the Relay
+
+```bash
+# Node
+live-term-server --port 8899 --path=/live-term/
+
+# Docker
+docker run -p 8899:8899 -e API_BASE=/live-term/ ghcr.io/xun66/live-term-relay:latest
+```
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT
