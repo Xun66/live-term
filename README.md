@@ -20,18 +20,16 @@ We provide a free public relay server at `xebox.org`.
 ```bash
 TERMINAL_SERVER_URL=wss://xebox.org/live-term/ live-term
 ```
-*Wait for the `Session ID` to be printed, then share it with the controller.*
+*It will print a `Session ID` (e.g., `a1b2c3`). Share this with the controller.*
 
 **Controller (The machine you are controlling from):**
 ```bash
-TERMINAL_SERVER_URL=wss://xebox.org/live-term/ live-term --mode=controller --target-uuid=YOUR_ID
+TERMINAL_SERVER_URL=wss://xebox.org/live-term/ live-term --mode=controller --target-id=YOUR_ID
 ```
 
 ---
 
 ### 🏠 Case 2: Using your own Local/Private Server
-
-If you are running the relay server yourself:
 
 **Target:**
 ```bash
@@ -40,7 +38,7 @@ live-term --server=ws://localhost:8899/live-term/ --allow-insecure
 
 **Controller:**
 ```bash
-live-term --server=ws://localhost:8899/live-term/ --allow-insecure --mode=controller --target-uuid=YOUR_ID
+live-term --server=ws://localhost:8899/live-term/ --allow-insecure --mode=controller --target-id=YOUR_ID
 ```
 
 ---
@@ -50,15 +48,24 @@ live-term --server=ws://localhost:8899/live-term/ --allow-insecure --mode=contro
 | Argument | Description | Default |
 | :--- | :--- | :--- |
 | `--mode` | Run mode: `target` or `controller`. | `target` |
-| `--id` | (Target only) Custom session ID. | (Random 6 chars) |
-| `--target-uuid`| (Controller only) ID of the target to connect to. | **Required** |
+| `--target-id`| (Controller only) The Session ID of the target. | **Required** |
+| `--id` | (Target only) Custom Session ID (Vanity ID). | (Random 6 chars) |
 | `--server` | Full URL of the relay server. | `ws://127.0.0.1:8899/live-term/` |
 | `--allow-insecure` | Allow `ws://` or self-signed certificates. | `false` |
-| `--hotkey` | Key to exit target mode. | `\x18` (Ctrl+X) |
+| `--hotkey` | Key to exit session (e.g., `ctrl+b`, `^x`). | `ctrl+x` |
+
+### Hotkey Examples:
+- `--hotkey=ctrl+b`
+- `--hotkey=^q`
+- `--hotkey=f1` (literal characters)
+
+## Security
+
+- **E2EE**: All data is encrypted with AES-256-GCM. Keys are exchanged via RSA and never touch the server.
+- **Verification Code (SAS)**: A **6-digit numeric code** is shown on both ends. **Verify this matches** to ensure no Man-in-the-Middle is present.
+- **Explicit Approval**: The target must manually approve any incoming connection.
 
 ## Self-Hosting the Relay
-
-You can run the relay server using Node or Docker:
 
 ```bash
 # Node
@@ -67,12 +74,6 @@ live-term-server --port 8899 --path=/live-term/
 # Docker
 docker run -p 8899:8899 -e API_BASE=/live-term/ ghcr.io/xun66/live-term-relay:latest
 ```
-
-## Security
-
-- **E2EE**: All data is encrypted with AES-256-GCM. Keys are exchanged via RSA and never touch the server.
-- **SAS Verification**: A 6-digit verification code is shown on both ends to prevent Man-in-the-Middle attacks.
-- **Explicit Approval**: The target must manually approve any incoming connection.
 
 ## License
 
