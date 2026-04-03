@@ -92,7 +92,7 @@ async function main() {
         // ==========================
         //        Target Mode
         // ==========================
-        const uuid = args['id'] || crypto.randomUUID().slice(0, 6);
+        const uuid = args['id'] || crypto.randomUUID();
         const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
         const pubKeyStr = publicKey.export({ type: 'spki', format: 'pem' });
         const nonceT = crypto.randomBytes(16).toString('hex');

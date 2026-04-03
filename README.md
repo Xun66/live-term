@@ -20,7 +20,7 @@ We provide a free public relay server at `xebox.org`.
 ```bash
 TERMINAL_SERVER_URL=wss://xebox.org/live-term/ live-term
 ```
-*It will print a `Session ID` (e.g., `a1b2c3`). Share this with the controller.*
+*It will print a `Session ID` (UUID). Share this with the controller.*
 
 **Controller (The machine you are controlling from):**
 ```bash
@@ -33,12 +33,12 @@ TERMINAL_SERVER_URL=wss://xebox.org/live-term/ live-term --mode=controller --tar
 
 **Target:**
 ```bash
-live-term --server=ws://localhost:8899/live-term/ --allow-insecure
+TERMINAL_SERVER_URL=ws://localhost:8899/live-term/ live-term --allow-insecure
 ```
 
 **Controller:**
 ```bash
-live-term --server=ws://localhost:8899/live-term/ --allow-insecure --mode=controller --target-id=YOUR_ID
+TERMINAL_SERVER_URL=ws://localhost:8899/live-term/ live-term --mode=controller --target-id=YOUR_ID --allow-insecure
 ```
 
 ---
@@ -54,10 +54,7 @@ live-term --server=ws://localhost:8899/live-term/ --allow-insecure --mode=contro
 | `--allow-insecure` | Allow `ws://` or self-signed certificates. | `false` |
 | `--hotkey` | Key to exit session (e.g., `ctrl+b`, `^x`). | `ctrl+x` |
 
-### Hotkey Examples:
-- `--hotkey=ctrl+b`
-- `--hotkey=^q`
-- `--hotkey=f1` (literal characters)
+> **Note:** You can use the `TERMINAL_SERVER_URL` environment variable (as shown in the examples) or the `--server` flag to specify the relay.
 
 ## Security
 
