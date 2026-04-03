@@ -80,3 +80,7 @@ docker run -p 8899:8899 -e API_BASE=/live-term/ ghcr.io/xun66/live-term-relay:la
 ## License
 
 MIT
+
+## Links
+
+- [linux.do](https://linux.do)

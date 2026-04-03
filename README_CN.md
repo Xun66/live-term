@@ -79,3 +79,7 @@ docker run -p 8899:8899 -e API_BASE=/live-term/ ghcr.io/xun66/live-term-relay:la
 ## 许可证
 
 MIT
+
+## 友情链接
+
+- [linux.do](https://linux.do)
