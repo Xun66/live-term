@@ -6,6 +6,8 @@
 
 https://github.com/user-attachments/assets/02a94823-0e09-470a-a55e-4ba3ff4b7fa4
 
+> 注意：视频中的 relay URL 仅供演示，实际调用命令请以下方说明为准。
+
 ## 快速开始
 
 ### 1. 通过 NPM 安装

@@ -6,6 +6,8 @@
 
 https://github.com/user-attachments/assets/02a94823-0e09-470a-a55e-4ba3ff4b7fa4
 
+> Note: The relay URL shown in the video is for demonstration only. For actual usage, follow the commands below.
+
 
 ## Quick Start
 
