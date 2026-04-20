@@ -24,13 +24,13 @@ npm install -g @xun66/live-term
 
 **被控端（Target，即你想共享终端的机器）：**
 ```bash
-TERMINAL_RELAY_URL=wss://xebox.org/live-term/ws live-term
+live-term
 ```
 *它会打印一个 `Session ID` (UUID)。将此 ID 分享给控制端。*
 
 **控制端（Controller，即你进行操作的机器）：**
 ```bash
-TERMINAL_RELAY_URL=wss://xebox.org/live-term/ws live-term --mode=controller --target-id=Session_ID
+live-term --mode=controller --target-id=Session_ID
 ```
 
 ---
@@ -56,7 +56,7 @@ TERMINAL_RELAY_URL=ws://localhost:8899/live-term/ws live-term --mode=controller 
 | `--mode` | 运行模式：`target` 或 `controller`。 | `target` |
 | `--target-id`| （仅限控制端）被控端的会话 ID。 | **必填** |
 | `--id` | （仅限被控端）自定义会话 ID (Vanity ID)。 | (随机 6 位字符) |
-| `--relay` | 中继服务器的完整 URL。 | `ws://127.0.0.1:8899/live-term/ws` |
+| `--relay` | 中继服务器的完整 URL。 | `wss://xebox.org/live-term/ws` |
 | `--allow-insecure` | 允许 `ws://` 或自签名证书。 | `false` |
 | `--hotkey` | 退出会话的热键（如 `ctrl+b`, `^x`）。 | `ctrl+x` |
 

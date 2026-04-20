@@ -25,13 +25,13 @@ We provide a free public relay at `xebox.org`.
 
 **Target (The machine you want to control):**
 ```bash
-TERMINAL_RELAY_URL=wss://xebox.org/live-term/ws live-term
+live-term
 ```
 *It will print a `Session ID` (UUID). Share this with the controller.*
 
 **Controller (The machine you are controlling from):**
 ```bash
-TERMINAL_RELAY_URL=wss://xebox.org/live-term/ws live-term --mode=controller --target-id=Session_ID
+live-term --mode=controller --target-id=Session_ID
 ```
 
 ---
@@ -57,7 +57,7 @@ TERMINAL_RELAY_URL=ws://localhost:8899/live-term/ws live-term --mode=controller 
 | `--mode` | Run mode: `target` or `controller`. | `target` |
 | `--target-id`| (Controller only) The Session ID of the target. | **Required** |
 | `--id` | (Target only) Custom Session ID (Vanity ID). | (Random 6 chars) |
-| `--relay` | Full URL of the relay. | `ws://127.0.0.1:8899/live-term/ws` |
+| `--relay` | Full URL of the relay. | `wss://xebox.org/live-term/ws` |
 | `--allow-insecure` | Allow `ws://` or self-signed certificates. | `false` |
 | `--hotkey` | Key to exit session (e.g., `ctrl+b`, `^x`). | `ctrl+x` |
 

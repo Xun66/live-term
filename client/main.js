@@ -13,7 +13,7 @@ const args = process.argv.slice(2).reduce((acc, arg) => {
 }, {});
 
 const mode = args['mode'] || 'target'; 
-const RELAY_URL = args['relay'] || process.env.TERMINAL_RELAY_URL || 'ws://127.0.0.1:8899/live-term/ws';
+const RELAY_URL = args['relay'] || process.env.TERMINAL_RELAY_URL || 'wss://xebox.org/live-term/ws';
 
 // Hotkey Parser: Supports "ctrl+x", "^x", or raw hex like "\x18"
 function parseHotkey(val) {
@@ -87,6 +87,7 @@ function resetTerminal() {
 async function main() {
     const isController = mode === 'controller';
     const wsOptions = args['allow-insecure'] ? { rejectUnauthorized: false } : {};
+    console.log(`\x1b[90musing relay: ${RELAY_URL}\x1b[0m`);
 
     if (!isController) {
         // ==========================
@@ -98,7 +99,6 @@ async function main() {
         const nonceT = crypto.randomBytes(16).toString('hex');
 
         console.log(`\x1b[32m[Target Mode]\x1b[0m Session ID: \x1b[1;36m${uuid}\x1b[0m`);
-        console.log(`\x1b[90mRelay: ${RELAY_URL}\x1b[0m`);
         console.log(`Waiting for controller to connect...`);
 
         const ws = new WebSocket(`${RELAY_URL}?id=${uuid}&role=target`, wsOptions);
