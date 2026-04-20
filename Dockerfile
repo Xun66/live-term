@@ -19,6 +19,7 @@ COPY relay/ ./relay/
 # Expose relay port
 EXPOSE 8080
 ENV PORT=8080
+ENV WS_PATHS=/live-term/ws
 
 # Start relay
 CMD ["node", "relay/index.js"]

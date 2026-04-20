@@ -13,7 +13,7 @@ const args = process.argv.slice(2).reduce((acc, arg) => {
 }, {});
 
 const mode = args['mode'] || 'target'; 
-const RELAY_URL = args['relay'] || process.env.TERMINAL_RELAY_URL || 'ws://127.0.0.1:8899/live-term/';
+const RELAY_URL = args['relay'] || process.env.TERMINAL_RELAY_URL || 'ws://127.0.0.1:8899/live-term/ws';
 
 // Hotkey Parser: Supports "ctrl+x", "^x", or raw hex like "\x18"
 function parseHotkey(val) {

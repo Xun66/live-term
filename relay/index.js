@@ -1,30 +1,53 @@
 #!/usr/bin/env node
 const { WebSocketServer } = require('ws');
+const http = require('http');
 const url = require('url');
+const { hasArg, getArgValue, normalizeWsPath, resolveWsPaths } = require('./ws-path-config');
 
 const args = process.argv.slice(2);
-function getArg(name, short) {
-  const index = args.findIndex(arg => arg === name || arg === short);
-  if (index !== -1 && index + 1 < args.length) {
-    return args[index + 1];
-  }
-  return null;
+
+if (hasArg(args, '--path', '-pt')) {
+  console.error('[Relay] `--path` has been removed. Please use `--paths`.');
+  process.exit(1);
 }
 
-const port = parseInt(getArg('--port', '-p') || process.env.PORT || '8899', 10);
-const host = getArg('--host', '-h') || process.env.HOST || '0.0.0.0';
-const wsPath = getArg('--path', '-pt') || process.env.WS_PATH || process.env.API_BASE || '/live-term/';
+if (process.env.WS_PATH || process.env.API_BASE) {
+  console.error('[Relay] `WS_PATH`/`API_BASE` has been removed. Please use `WS_PATHS`.');
+  process.exit(1);
+}
+
+const port = parseInt(getArgValue(args, '--port', '-p') || process.env.PORT || '8899', 10);
+const host = getArgValue(args, '--host', '-h') || process.env.HOST || '0.0.0.0';
+const wsPaths = resolveWsPaths(args, process.env);
+const wsPathSet = new Set(wsPaths);
 
 const sessions = new Map();
-const wss = new WebSocketServer({ 
-  port: port, 
-  host: host,
-  path: wsPath 
+const server = http.createServer();
+const wss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (req, socket, head) => {
+  const pathname = normalizeWsPath(url.parse(req.url).pathname);
+
+  if (!pathname || !wsPathSet.has(pathname)) {
+    socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  wss.handleUpgrade(req, socket, head, ws => {
+    wss.emit('connection', ws, req);
+  });
 });
 
-wss.on('listening', () => {
-    console.log(`[Relay] Listening on ${host}:${port}${wsPath}`);
+server.on('listening', () => {
+  console.log(`[Relay] Listening on ${host}:${port} (${wsPaths.join(', ')})`);
 });
+
+wss.on('error', (err) => {
+  console.error('[Relay] Server Error:', err);
+});
+
+server.listen(port, host);
 
 wss.on('connection', (ws, req) => {
   const params = url.parse(req.url, true).query;
