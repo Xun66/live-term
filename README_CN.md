@@ -59,6 +59,8 @@ TERMINAL_RELAY_URL=ws://localhost:8899/live-term/ws live-term --mode=controller 
 | `--relay` | 中继服务器的完整 URL。 | `wss://xebox.org/live-term/ws` |
 | `--allow-insecure` | 允许 `ws://` 或自签名证书。 | `false` |
 | `--hotkey` | 退出会话的热键（如 `ctrl+b`, `^x`）。 | `ctrl+x` |
+| `--replay-buffer-bytes` | （仅限被控端）为重连回放保留的最大终端输出字节数。 | `1048576` |
+| `--replay-buffer-ms` | （仅限被控端）为重连回放保留的最长终端输出时间。 | `300000` |
 
 > **注意：** 你可以使用 `TERMINAL_RELAY_URL` 环境变量（如示例所示）或 `--relay` 标志来指定中继服务器。
 
@@ -67,6 +69,7 @@ TERMINAL_RELAY_URL=ws://localhost:8899/live-term/ws live-term --mode=controller 
 - **端到端加密 (E2EE)**：所有数据都使用 AES-256-GCM 加密。密钥通过 RSA 交换，绝不会接触到中继服务器。
 - **验证码 (SAS)**：批准连接时两端都会显示一个 **6 位数字代码**。它和 Session ID 是两回事。**验证此代码是否一致**以确保没有中间人攻击（MITM）。
 - **显式批准**：被控端每次被控都必须手动批准连接。
+- **重连回放**：被控端会保留一个有界的加密输出回放缓冲区。控制端在缓冲区过期前重连时会补发缺失的终端输出；如果已经无法完整补发，控制端会提示终端显示可能已过期。
 
 ## 自行托管中继服务器
 

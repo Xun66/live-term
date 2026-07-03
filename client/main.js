@@ -5,6 +5,7 @@ const { spawn } = require('node-pty');
 const crypto = require('crypto');
 const readline = require('readline');
 const { getLinearBackoffDelay } = require('./reconnect');
+const { DEFAULT_MAX_AGE_MS, DEFAULT_MAX_BYTES, ReplayBuffer } = require('./replay-buffer');
 
 // --- Configuration ---
 const args = process.argv.slice(2).reduce((acc, arg) => {
@@ -31,9 +32,17 @@ function parseHotkey(val) {
     return val[0]; 
 }
 
+function parsePositiveInt(value, fallback) {
+    if (value === undefined) return fallback;
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 const HOTKEY = parseHotkey(args['hotkey']);
 const HOTKEY_DISPLAY = args['hotkey'] || 'Ctrl+X';
 const MAX_CONTROLLER_RETRIES = 2;
+const REPLAY_BUFFER_BYTES = parsePositiveInt(args['replay-buffer-bytes'], DEFAULT_MAX_BYTES);
+const REPLAY_BUFFER_MS = parsePositiveInt(args['replay-buffer-ms'], DEFAULT_MAX_AGE_MS);
 
 // Security Check: Enforce --allow-insecure for ws://
 if (RELAY_URL.startsWith('ws://') && !args['allow-insecure']) {
@@ -72,6 +81,14 @@ function decryptEnvelope(msg, key) {
         console.error('\x1b[31m[Decryption Failed]\x1b[0m Integrity check failed or wrong key.');
         process.exit(1);
     }
+}
+
+function encryptJsonEnvelope(type, data, key) {
+    return encryptEnvelope(type, Buffer.from(JSON.stringify(data)), key);
+}
+
+function parseJsonEnvelopeData(msg) {
+    return JSON.parse(msg.data.toString());
 }
 
 const UI = {
@@ -121,8 +138,13 @@ async function main() {
         let ws = null;
         let aesKey = null;
         let ptyProcess = null;
+        let replayReady = false;
         let shouldReconnect = true;
         let reconnectAttempt = 0;
+        const replayBuffer = new ReplayBuffer({
+            maxBytes: REPLAY_BUFFER_BYTES,
+            maxAgeMs: REPLAY_BUFFER_MS
+        });
 
         const cleanup = (reason = 'Session ended.') => {
             resetTerminal();
@@ -179,6 +201,7 @@ async function main() {
                     }
                 } else if (msg.type === 'auth' && isApproved) {
                     aesKey = crypto.privateDecrypt(privateKey, Buffer.from(msg.key, 'base64'));
+                    replayReady = false;
                     console.log(`\x1b[32m[OK] Encrypted Session Established.\x1b[0m`);
                     console.log(`${UI.BANNER_TARGET} Press \x1b[1m${HOTKEY_DISPLAY}\x1b[0m to exit.`);
                     if (ptyProcess) {
@@ -186,11 +209,14 @@ async function main() {
                     } else {
                         startPty();
                     }
-                } else if (msg.type === 'input' && aesKey && ptyProcess) {
+                } else if (msg.type === 'input' && aesKey && replayReady && ptyProcess) {
                     ptyProcess.write(msg.data.toString());
-                } else if (msg.type === 'resize' && aesKey && ptyProcess) {
+                } else if (msg.type === 'resize' && aesKey && replayReady && ptyProcess) {
                     const { cols, rows } = JSON.parse(msg.data.toString());
                     ptyProcess.resize(cols, rows);
+                } else if (msg.type === 'resume' && aesKey) {
+                    const { lastSeq } = parseJsonEnvelopeData(msg);
+                    sendReplay(lastSeq);
                 } else if (msg.type === 'close') {
                     shouldReconnect = false;
                     cleanup('Session closed by peer.');
@@ -200,6 +226,7 @@ async function main() {
 
             ws.on('close', () => {
                 aesKey = null;
+                replayReady = false;
                 cleanup('Relay connection closed.');
                 if (shouldReconnect) {
                     reconnectAttempt += 1;
@@ -255,8 +282,9 @@ async function main() {
             });
 
             ptyProcess.onData(data => {
+                const entry = replayBuffer.append(data);
                 process.stdout.write(data);
-                if (aesKey && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(encryptEnvelope('output', data, aesKey)));
+                sendOutput(entry, false);
             });
 
             ptyProcess.onExit(() => {
@@ -265,6 +293,47 @@ async function main() {
                 cleanup('Local shell exited.');
                 process.exit(0);
             });
+        }
+
+        function sendOutput(entry, replay) {
+            if (!aesKey || !replayReady || !ws || ws.readyState !== WebSocket.OPEN) return;
+            ws.send(JSON.stringify(encryptJsonEnvelope('output', {
+                seq: entry.seq,
+                replay,
+                data: entry.data.toString('base64')
+            }, aesKey)));
+        }
+
+        function sendReplay(lastSeq) {
+            if (!aesKey || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+            const normalizedLastSeq = Number.isFinite(lastSeq) && lastSeq >= 0 ? lastSeq : 0;
+            const requestedSeq = normalizedLastSeq + 1;
+            const missed = replayBuffer.hasMissed(requestedSeq);
+            const entries = replayBuffer.getAfter(normalizedLastSeq);
+
+            ws.send(JSON.stringify(encryptJsonEnvelope('replay_start', {
+                fromSeq: entries[0] ? entries[0].seq : requestedSeq,
+                latestSeq: replayBuffer.getLatestSeq()
+            }, aesKey)));
+
+            if (missed) {
+                ws.send(JSON.stringify(encryptJsonEnvelope('replay_miss', {
+                    requestedSeq,
+                    earliestSeq: replayBuffer.getEarliestSeq(),
+                    latestSeq: replayBuffer.getLatestSeq()
+                }, aesKey)));
+            }
+
+            replayReady = true;
+            for (const entry of entries) {
+                sendOutput(entry, true);
+            }
+
+            ws.send(JSON.stringify(encryptJsonEnvelope('replay_done', {
+                latestSeq: replayBuffer.getLatestSeq(),
+                missed
+            }, aesKey)));
         }
     } else {
         // ==========================
@@ -281,6 +350,7 @@ async function main() {
         let shouldReconnect = true;
         let inputHandler = null;
         let resizeHandler = null;
+        let lastOutputSeq = 0;
 
         const cleanup = (reason = 'Disconnected.') => {
             resetTerminalStyle();
@@ -333,10 +403,25 @@ async function main() {
                     reconnectAttempt = 0;
                     console.log(`\x1b[32m[OK] Approved.\x1b[0m`);
                     ws.send(JSON.stringify({ type: 'auth', key: crypto.publicEncrypt(ws.targetPub, sessionKey).toString('base64') }));
+                    ws.send(JSON.stringify(encryptJsonEnvelope('resume', { lastSeq: lastOutputSeq }, sessionKey)));
+                    console.log('\x1b[90mReplaying buffered output...\x1b[0m');
+                } else if (msg.type === 'output') {
+                    const output = parseJsonEnvelopeData(msg);
+                    if (Number.isFinite(output.seq)) {
+                        lastOutputSeq = Math.max(lastOutputSeq, output.seq);
+                    }
+                    process.stdout.write(Buffer.from(output.data, 'base64'));
+                } else if (msg.type === 'replay_miss') {
+                    const miss = parseJsonEnvelopeData(msg);
+                    resetTerminalStyle();
+                    console.log(`\n\x1b[33m[!] Terminal output was lost while disconnected. Requested seq ${miss.requestedSeq}, earliest available seq ${miss.earliestSeq}.\x1b[0m`);
+                } else if (msg.type === 'replay_done') {
+                    const replay = parseJsonEnvelopeData(msg);
+                    if (Number.isFinite(replay.latestSeq)) {
+                        lastOutputSeq = Math.max(lastOutputSeq, replay.latestSeq);
+                    }
                     console.log(`${UI.BANNER_CTRL} Press \x1b[1m${HOTKEY_DISPLAY}\x1b[0m to exit.`);
                     attachControllerSession(ws, sessionKey);
-                } else if (msg.type === 'output') {
-                    process.stdout.write(msg.data);
                 } else if (msg.type === 'close') {
                     shouldReconnect = false;
                     cleanup('Closed by peer.');
