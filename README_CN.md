@@ -55,7 +55,7 @@ TERMINAL_RELAY_URL=ws://localhost:8899/live-term/ws live-term --mode=controller 
 | :--- | :--- | :--- |
 | `--mode` | 运行模式：`target` 或 `controller`。 | `target` |
 | `--target-id`| （仅限控制端）被控端的会话 ID。 | **必填** |
-| `--id` | （仅限被控端）自定义会话 ID (Vanity ID)。 | (随机 6 位字符) |
+| `--id` | （仅限被控端）自定义会话 ID。控制端必须将同一个值传给 `--target-id`。 | 随机 UUID |
 | `--relay` | 中继服务器的完整 URL。 | `wss://xebox.org/live-term/ws` |
 | `--allow-insecure` | 允许 `ws://` 或自签名证书。 | `false` |
 | `--hotkey` | 退出会话的热键（如 `ctrl+b`, `^x`）。 | `ctrl+x` |
@@ -65,7 +65,7 @@ TERMINAL_RELAY_URL=ws://localhost:8899/live-term/ws live-term --mode=controller 
 ## 安全性
 
 - **端到端加密 (E2EE)**：所有数据都使用 AES-256-GCM 加密。密钥通过 RSA 交换，绝不会接触到中继服务器。
-- **验证码 (SAS)**：两端都会显示一个 **6 位数字代码**。**验证此代码是否一致**以确保没有中间人攻击（MITM）。
+- **验证码 (SAS)**：批准连接时两端都会显示一个 **6 位数字代码**。它和 Session ID 是两回事。**验证此代码是否一致**以确保没有中间人攻击（MITM）。
 - **显式批准**：被控端每次被控都必须手动批准连接。
 
 ## 自行托管中继服务器

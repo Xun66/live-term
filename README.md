@@ -56,7 +56,7 @@ TERMINAL_RELAY_URL=ws://localhost:8899/live-term/ws live-term --mode=controller 
 | :--- | :--- | :--- |
 | `--mode` | Run mode: `target` or `controller`. | `target` |
 | `--target-id`| (Controller only) The Session ID of the target. | **Required** |
-| `--id` | (Target only) Custom Session ID (Vanity ID). | (Random 6 chars) |
+| `--id` | (Target only) Custom Session ID. The controller must pass the same value as `--target-id`. | Random UUID |
 | `--relay` | Full URL of the relay. | `wss://xebox.org/live-term/ws` |
 | `--allow-insecure` | Allow `ws://` or self-signed certificates. | `false` |
 | `--hotkey` | Key to exit session (e.g., `ctrl+b`, `^x`). | `ctrl+x` |
@@ -66,7 +66,7 @@ TERMINAL_RELAY_URL=ws://localhost:8899/live-term/ws live-term --mode=controller 
 ## Security
 
 - **E2EE**: All data is encrypted with AES-256-GCM. Keys are exchanged via RSA and never touch the relay.
-- **Verification Code (SAS)**: A **6-digit numeric code** is shown on both ends. **Verify this matches** to ensure no Man-in-the-Middle is present.
+- **Verification Code (SAS)**: A **6-digit numeric code** is shown on both ends during approval. This is separate from the Session ID. **Verify this matches** to ensure no Man-in-the-Middle is present.
 - **Explicit Approval**: The target must manually approve every incoming remote-control request.
 
 ## Self-Hosting the Relay
