@@ -133,7 +133,6 @@ async function main() {
         const uuid = args['id'] || crypto.randomUUID();
 
         console.log(`\x1b[32m[Target Mode]\x1b[0m Session ID: \x1b[1;36m${uuid}\x1b[0m`);
-        console.log(`Waiting for controller to connect...`);
 
         let ws = null;
         let aesKey = null;
@@ -168,6 +167,7 @@ async function main() {
             ws.on('open', () => {
                 reconnectAttempt = 0;
                 console.log(`\x1b[32m[OK]\x1b[0m Connected to relay as target.`);
+                console.log(`Waiting for controller to connect...`);
             });
 
             ws.on('message', async (data) => {
